@@ -1,0 +1,67 @@
+groups:
+  - name: drift_alerts
+    rules:
+      - alert: DataDriftDetected
+        expr: data_drift_score > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data drift detected on feature {{ $labels.feature }}"
+          description: "Drift score {{ $value }} exceeds threshold 0.2 using {{ $labels.method }}"
+
+      - alert: HighDataDriftRate
+        expr: data_drift_score > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High data drift on feature {{ $labels.feature }}"
+          description: "Drift score {{ $value }} exceeds critical threshold 0.5"
+
+  - name: performance_alerts
+    rules:
+      - alert: ModelAccuracyDrop
+        expr: model_accuracy < 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model accuracy has dropped below 0.85"
+          description: "Current accuracy is {{ $value }}"
+
+      - alert: ModelF1Drop
+        expr: model_f1_score < 0.80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model F1 score has dropped below 0.80"
+          description: "Current F1 score is {{ $value }}"
+
+      - alert: CriticalPerformanceDegradation
+        expr: model_accuracy < 0.70
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical model performance degradation"
+          description: "Model accuracy {{ $value }} is critically low"
+
+  - name: retraining_alerts
+    rules:
+      - alert: RetrainingFailed
+        expr: increase(retraining_failed_total[1h]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Model retraining pipeline failed"
+          description: "A retraining run failed in the last hour"
+
+      - alert: FrequentRetraining
+        expr: increase(retraining_triggered_total[24h]) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "Excessive retraining triggered"
+          description: "{{ $value }} retraining runs in the last 24 hours"

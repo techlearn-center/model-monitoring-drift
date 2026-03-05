@@ -1,0 +1,102 @@
+version: "3.8"
+
+services:
+  # ─── Model Monitoring API ───────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drift-monitor-app
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DRIFT_THRESHOLD=${DRIFT_THRESHOLD:-0.05}
+      - PSI_THRESHOLD=${PSI_THRESHOLD:-0.2}
+      - KS_THRESHOLD=${KS_THRESHOLD:-0.05}
+      - PERFORMANCE_DEGRADATION_THRESHOLD=${PERFORMANCE_DEGRADATION_THRESHOLD:-0.05}
+      - PROMETHEUS_PUSHGATEWAY_URL=http://pushgateway:9091
+      - ALERT_WEBHOOK_URL=http://alertmanager:9093/api/v1/alerts
+      - DATABASE_URL=sqlite:///./monitoring.db
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+    depends_on:
+      - prometheus
+      - alertmanager
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ─── Prometheus ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: drift-monitor-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ─── Grafana ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: drift-monitor-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ─── Alertmanager ───────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: drift-monitor-alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./config/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ─── Prometheus Pushgateway ─────────────────────────────────
+  pushgateway:
+    image: prom/pushgateway:v1.6.2
+    container_name: drift-monitor-pushgateway
+    ports:
+      - "9091:9091"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
